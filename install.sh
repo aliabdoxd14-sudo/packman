@@ -2,7 +2,7 @@
 
 set -e
 
-REPO="yourusername/packman"
+REPO="aliabdoxd14-sudo/packman"
 INSTALL_DIR="${HOME}/.local/bin"
 VERSION=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
 
