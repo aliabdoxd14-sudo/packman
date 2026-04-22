@@ -96,6 +96,7 @@ pub struct App {
     pub selected_package_index: usize,
     pub search_query: String,
     pub search_mode: bool,
+    pub install_mode: bool,
     pub filter_mode: FilterMode,
     pub sort_field: SortField,
     pub sort_ascending: bool,
@@ -118,6 +119,7 @@ impl App {
             selected_package_index: 0,
             search_query: String::new(),
             search_mode: false,
+            install_mode: false,
             filter_mode: FilterMode::All,
             sort_field: SortField::Name,
             sort_ascending: true,
@@ -538,13 +540,15 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(area);
 
-    let search_indicator = if app.search_mode {
-        format!(" [SEARCH: {}] ", app.search_query)
+    let (search_indicator, hint_color) = if app.install_mode {
+        (format!(" [INSTALL: {}]  Enter confirm  Esc cancel ", app.search_query), COLORS.accent)
+    } else if app.search_mode {
+        (format!(" [SEARCH: {}]  Enter confirm  Esc cancel ", app.search_query), COLORS.warning)
     } else {
-        " ↑↓ Navigate  / Search  u Upgrade  r Remove  i Install  q Quit ".to_string()
+        (" ↑↓/jk Navigate  Tab Switch PM  / Search  n Install new  u Upgrade  r Remove  q Quit ".to_string(), COLORS.fg)
     };
     let action_hints = Paragraph::new(search_indicator)
-        .style(Style::default().fg(if app.search_mode { COLORS.warning } else { COLORS.fg }))
+        .style(Style::default().fg(hint_color))
         .alignment(Alignment::Center);
 
     let status = if let Some((_, pkg)) = app.filtered_packages().iter().nth(app.selected_package_index) {
@@ -582,7 +586,6 @@ pub fn run() {
         println!("  r             Remove selected package");
         println!("  i             Install package (type name in search)");
         println!("  Tab           Switch package manager");
-        println!("  Tab           Switch package manager");
         println!("  Ctrl+R        Refresh package list");
         println!("  Ctrl+O        Toggle outdated packages only");
         println!("  q or Esc      Quit");
@@ -618,20 +621,43 @@ pub fn run() {
                     KeyCode::Esc => {
                         if app.search_mode {
                             app.search_mode = false;
+                            app.install_mode = false;
                             app.search_query.clear();
                         } else {
                             should_quit = true;
                         }
                     }
-                    KeyCode::Char('q') => {
-                        if !app.search_mode {
-                            should_quit = true;
+                    KeyCode::Enter => {
+                        if app.install_mode {
+                            if !app.search_query.is_empty() {
+                                let name = app.search_query.clone();
+                                if let Some(pm) = app.active_pm() {
+                                    let result = runtime.block_on(pm.install_package(&name));
+                                    match result {
+                                        Ok(_) => {
+                                            app.message = Some(format!("Installed {}", name));
+                                            app.load_packages_sync();
+                                        }
+                                        Err(e) => {
+                                            app.message = Some(format!("Error: {}", e));
+                                        }
+                                    }
+                                }
+                            }
+                            app.search_query.clear();
+                            app.search_mode = false;
+                            app.install_mode = false;
+                        } else if app.search_mode {
+                            app.search_mode = false;
                         }
                     }
-                    KeyCode::Up | KeyCode::Char('k') => {
+                    KeyCode::Char('q') if !app.search_mode => {
+                        should_quit = true;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if !app.search_mode => {
                         app.select_previous();
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
+                    KeyCode::Down | KeyCode::Char('j') if !app.search_mode => {
                         app.select_next();
                     }
                     KeyCode::Char('/') => {
@@ -640,7 +666,7 @@ pub fn run() {
                             app.search_query.clear();
                         }
                     }
-                    KeyCode::Char('u') => {
+                    KeyCode::Char('u') if !app.search_mode => {
                         let pkg_name = app.filtered_packages()
                             .get(app.selected_package_index)
                             .map(|(_, p)| p.name.clone());
@@ -659,7 +685,7 @@ pub fn run() {
                             }
                         }
                     }
-                    KeyCode::Char('r') => {
+                    KeyCode::Char('r') if !app.search_mode => {
                         let pkg_name = app.filtered_packages()
                             .get(app.selected_package_index)
                             .map(|(_, p)| p.name.clone());
@@ -678,34 +704,24 @@ pub fn run() {
                             }
                         }
                     }
-                    KeyCode::Char('i') => {
-                        if !app.search_query.is_empty() {
-                            let name = app.search_query.clone();
-                            if let Some(pm) = app.active_pm() {
-                                let result = runtime.block_on(pm.install_package(&name));
-                                match result {
-                                    Ok(_) => {
-                                        app.message = Some(format!("Installed {}", name));
-                                        app.load_packages_sync();
-                                    }
-                                    Err(e) => {
-                                        app.message = Some(format!("Error: {}", e));
-                                    }
-                                }
-                            }
-                            app.search_query.clear();
-                        }
+                    KeyCode::Char('n') if !app.search_mode => {
+                        app.search_mode = true;
+                        app.install_mode = true;
+                        app.search_query.clear();
                     }
                     KeyCode::Char('o') if modifiers.contains(KeyModifiers::CONTROL) => {
                         app.show_outdated_only = !app.show_outdated_only;
                     }
-                    KeyCode::Char('R') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('r') if modifiers.contains(KeyModifiers::CONTROL) => {
                         app.load_packages_sync();
                     }
                     KeyCode::Tab => {
                         let pm_count = app.package_managers.len();
                         if pm_count > 0 {
                             app.active_pm_index = (app.active_pm_index + 1) % pm_count;
+                            app.loading = true;
+                            app.packages.clear();
+                            let _ = terminal.draw(|f| render_app(f, &app));
                             handle_pm_switch(&mut app, &runtime);
                         }
                     }

@@ -242,7 +242,7 @@ impl PackageManager {
             if parts.len() == 2 {
                 result.push(Package {
                     name: parts[0].trim().to_string(),
-                    version: parts[1].trim().to_string(),
+                    version: parts[1].trim().trim_end_matches(':').to_string(),
                     status: PackageStatus::Installed,
                     size: 0,
                     description: String::new(),
@@ -306,7 +306,7 @@ impl PackageManager {
         for line in stdout.lines() {
             let parts: Vec<&str> = line.split(' ').collect();
             if parts.len() >= 3 {
-                let status = if parts[2].contains("installed") {
+                let status = if line.contains("install ok installed") {
                     PackageStatus::Installed
                 } else {
                     PackageStatus::Available
