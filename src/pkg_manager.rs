@@ -40,36 +40,16 @@ impl PackageManager {
 
     pub async fn install_package(&self, name: &str) -> AppResult<String> {
         let output = match self.name.as_str() {
-            "pip" => Command::new("sh")
-                .args(["-c", &format!("{} install {}", self.command, name)])
-                .output()?,
-            "npm" => Command::new("sh")
-                .args(["-c", &format!("{} install -g {}", self.command, name)])
-                .output()?,
-            "cargo" => Command::new("sh")
-                .args(["-c", &format!("{} install {}", self.command, name)])
-                .output()?,
-            "brew" => Command::new("sh")
-                .args(["-c", &format!("{} install {}", self.command, name)])
-                .output()?,
-            "apt" => Command::new("sh")
-                .args(["-c", &format!("sudo {} install {}", self.command, name)])
-                .output()?,
-            "pacman" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -S {}", self.command, name)])
-                .output()?,
-            "aur" => Command::new("sh")
-                .args(["-c", &format!("{} -S {}", self.command, name)])
-                .output()?,
-            "rpm" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -ivh {}", self.command, name)])
-                .output()?,
-            "flatpak" => Command::new("sh")
-                .args(["-c", &format!("{} install flathub {}", self.command, name)])
-                .output()?,
-            "snap" => Command::new("sh")
-                .args(["-c", &format!("sudo {} install {}", self.command, name)])
-                .output()?,
+            "pip" => Command::new(&self.command).args(["install", name]).output()?,
+            "npm" => Command::new(&self.command).args(["install", "-g", name]).output()?,
+            "cargo" => Command::new(&self.command).args(["install", name]).output()?,
+            "brew" => Command::new(&self.command).args(["install", name]).output()?,
+            "apt" => Command::new("sudo").args([&self.command, "install", name]).output()?,
+            "pacman" => Command::new("sudo").args([&self.command, "-S", name]).output()?,
+            "aur" => Command::new(&self.command).args(["-S", name]).output()?,
+            "rpm" => Command::new("sudo").args([&self.command, "-ivh", name]).output()?,
+            "flatpak" => Command::new(&self.command).args(["install", "flathub", name]).output()?,
+            "snap" => Command::new("sudo").args([&self.command, "install", name]).output()?,
             _ => return Err(AppError::from("Unknown package manager")),
         };
 
@@ -82,36 +62,16 @@ impl PackageManager {
 
     pub async fn remove_package(&self, name: &str) -> AppResult<String> {
         let output = match self.name.as_str() {
-            "pip" => Command::new("sh")
-                .args(["-c", &format!("{} uninstall -y {}", self.command, name)])
-                .output()?,
-            "npm" => Command::new("sh")
-                .args(["-c", &format!("{} uninstall -g {}", self.command, name)])
-                .output()?,
-            "cargo" => Command::new("sh")
-                .args(["-c", &format!("{} uninstall {}", self.command, name)])
-                .output()?,
-            "brew" => Command::new("sh")
-                .args(["-c", &format!("{} uninstall {}", self.command, name)])
-                .output()?,
-            "apt" => Command::new("sh")
-                .args(["-c", &format!("sudo {} remove {}", self.command, name)])
-                .output()?,
-            "pacman" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -R {}", self.command, name)])
-                .output()?,
-            "aur" => Command::new("sh")
-                .args(["-c", &format!("{} -R {}", self.command, name)])
-                .output()?,
-            "rpm" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -e {}", self.command, name)])
-                .output()?,
-            "flatpak" => Command::new("sh")
-                .args(["-c", &format!("{} uninstall {}", self.command, name)])
-                .output()?,
-            "snap" => Command::new("sh")
-                .args(["-c", &format!("sudo {} remove {}", self.command, name)])
-                .output()?,
+            "pip" => Command::new(&self.command).args(["uninstall", "-y", name]).output()?,
+            "npm" => Command::new(&self.command).args(["uninstall", "-g", name]).output()?,
+            "cargo" => Command::new(&self.command).args(["uninstall", name]).output()?,
+            "brew" => Command::new(&self.command).args(["uninstall", name]).output()?,
+            "apt" => Command::new("sudo").args([&self.command, "remove", name]).output()?,
+            "pacman" => Command::new("sudo").args([&self.command, "-R", name]).output()?,
+            "aur" => Command::new(&self.command).args(["-R", name]).output()?,
+            "rpm" => Command::new("sudo").args([&self.command, "-e", name]).output()?,
+            "flatpak" => Command::new(&self.command).args(["uninstall", name]).output()?,
+            "snap" => Command::new("sudo").args([&self.command, "remove", name]).output()?,
             _ => return Err(AppError::from("Unknown package manager")),
         };
 
@@ -123,37 +83,29 @@ impl PackageManager {
     }
 
     pub async fn upgrade_package(&self, name: &str) -> AppResult<String> {
+        if self.name == "apt" {
+            let update = Command::new("sudo").args([&self.command, "update"]).output()?;
+            if !update.status.success() {
+                return Err(AppError::from(String::from_utf8_lossy(&update.stderr).to_string()));
+            }
+            let output = Command::new("sudo").args([&self.command, "upgrade", name]).output()?;
+            return if output.status.success() {
+                Ok(format!("Successfully upgraded {}", name))
+            } else {
+                Err(AppError::from(String::from_utf8_lossy(&output.stderr).to_string()))
+            };
+        }
+
         let output = match self.name.as_str() {
-            "pip" => Command::new("sh")
-                .args(["-c", &format!("{} install --upgrade {}", self.command, name)])
-                .output()?,
-            "npm" => Command::new("sh")
-                .args(["-c", &format!("{} update -g {}", self.command, name)])
-                .output()?,
-            "cargo" => Command::new("sh")
-                .args(["-c", &format!("{} install {}", self.command, name)])
-                .output()?,
-            "brew" => Command::new("sh")
-                .args(["-c", &format!("{} upgrade {}", self.command, name)])
-                .output()?,
-            "apt" => Command::new("sh")
-                .args(["-c", &format!("sudo {} update && sudo {} upgrade {}", self.command, self.command, name)])
-                .output()?,
-            "pacman" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -S {}", self.command, name)])
-                .output()?,
-            "aur" => Command::new("sh")
-                .args(["-c", &format!("{} -S {}", self.command, name)])
-                .output()?,
-            "rpm" => Command::new("sh")
-                .args(["-c", &format!("sudo {} -Uvh {}", self.command, name)])
-                .output()?,
-            "flatpak" => Command::new("sh")
-                .args(["-c", &format!("{} update {}", self.command, name)])
-                .output()?,
-            "snap" => Command::new("sh")
-                .args(["-c", &format!("sudo {} refresh {}", self.command, name)])
-                .output()?,
+            "pip" => Command::new(&self.command).args(["install", "--upgrade", name]).output()?,
+            "npm" => Command::new(&self.command).args(["update", "-g", name]).output()?,
+            "cargo" => Command::new(&self.command).args(["install", name]).output()?,
+            "brew" => Command::new(&self.command).args(["upgrade", name]).output()?,
+            "pacman" => Command::new("sudo").args([&self.command, "-S", name]).output()?,
+            "aur" => Command::new(&self.command).args(["-S", name]).output()?,
+            "rpm" => Command::new("sudo").args([&self.command, "-Uvh", name]).output()?,
+            "flatpak" => Command::new(&self.command).args(["update", name]).output()?,
+            "snap" => Command::new("sudo").args([&self.command, "refresh", name]).output()?,
             _ => return Err(AppError::from("Unknown package manager")),
         };
 
