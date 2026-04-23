@@ -26,6 +26,7 @@ impl PackageManager {
         match self.name.as_str() {
             "pip" => self.list_pip().await,
             "npm" => self.list_npm().await,
+            "pnpm" => self.list_pnpm().await,
             "cargo" => self.list_cargo().await,
             "brew" => self.list_brew().await,
             "apt" => self.list_apt().await,
@@ -40,6 +41,9 @@ impl PackageManager {
 
     pub async fn install_package(&self, name: &str) -> AppResult<String> {
         let output = match self.name.as_str() {
+            "pnpm" => Command::new("sh")
+                .args(["-c", &format!("{} add -g {}", self.command, name)])
+                .output()?,
             "pip" => Command::new("sh")
                 .args(["-c", &format!("{} install {}", self.command, name)])
                 .output()?,
@@ -76,12 +80,17 @@ impl PackageManager {
         if output.status.success() {
             Ok(format!("Successfully installed {}", name))
         } else {
-            Err(AppError::from(String::from_utf8_lossy(&output.stderr).to_string()))
+            Err(AppError::from(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ))
         }
     }
 
     pub async fn remove_package(&self, name: &str) -> AppResult<String> {
         let output = match self.name.as_str() {
+            "pnpm" => Command::new("sh")
+                .args(["-c", &format!("{} remove -g {}", self.command, name)])
+                .output()?,
             "pip" => Command::new("sh")
                 .args(["-c", &format!("{} uninstall -y {}", self.command, name)])
                 .output()?,
@@ -118,14 +127,22 @@ impl PackageManager {
         if output.status.success() {
             Ok(format!("Successfully removed {}", name))
         } else {
-            Err(AppError::from(String::from_utf8_lossy(&output.stderr).to_string()))
+            Err(AppError::from(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ))
         }
     }
 
     pub async fn upgrade_package(&self, name: &str) -> AppResult<String> {
         let output = match self.name.as_str() {
+            "pnpm" => Command::new("sh")
+                .args(["-c", &format!("{} update -g {}", self.command, name)])
+                .output()?,
             "pip" => Command::new("sh")
-                .args(["-c", &format!("{} install --upgrade {}", self.command, name)])
+                .args([
+                    "-c",
+                    &format!("{} install --upgrade {}", self.command, name),
+                ])
                 .output()?,
             "npm" => Command::new("sh")
                 .args(["-c", &format!("{} update -g {}", self.command, name)])
@@ -137,7 +154,13 @@ impl PackageManager {
                 .args(["-c", &format!("{} upgrade {}", self.command, name)])
                 .output()?,
             "apt" => Command::new("sh")
-                .args(["-c", &format!("sudo {} update && sudo {} upgrade {}", self.command, self.command, name)])
+                .args([
+                    "-c",
+                    &format!(
+                        "sudo {} update && sudo {} upgrade {}",
+                        self.command, self.command, name
+                    ),
+                ])
                 .output()?,
             "pacman" => Command::new("sh")
                 .args(["-c", &format!("sudo {} -S {}", self.command, name)])
@@ -160,13 +183,55 @@ impl PackageManager {
         if output.status.success() {
             Ok(format!("Successfully upgraded {}", name))
         } else {
-            Err(AppError::from(String::from_utf8_lossy(&output.stderr).to_string()))
+            Err(AppError::from(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ))
         }
+    }
+
+    async fn list_pnpm(&self) -> AppResult<Vec<Package>> {
+        let output = Command::new("sh")
+            .args(["-c", "pnpm list -g --json"])
+            .output()?;
+
+        if !output.status.success() {
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let data: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_default();
+
+        let mut result = Vec::new();
+        if let Some(list) = data.as_array() {
+            for entry in list {
+                if let Some(dependencies) = entry["dependencies"].as_object() {
+                    for (name, info) in dependencies {
+                        let version = info["version"].as_str().unwrap_or("").to_string();
+                        let description = info["description"].as_str().unwrap_or("").to_string();
+
+                        result.push(Package {
+                            name: name.clone(),
+                            version,
+                            status: PackageStatus::Installed,
+                            size: 0,
+                            description,
+                            repository: None,
+                            installed_by: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     async fn list_pip(&self) -> AppResult<Vec<Package>> {
         let output = Command::new("sh")
-            .args(["-c", "pip list --format=json 2>/dev/null || pip3 list --format=json"])
+            .args([
+                "-c",
+                "pip list --format=json 2>/dev/null || pip3 list --format=json",
+            ])
             .output()?;
 
         if !output.status.success() {
@@ -194,7 +259,10 @@ impl PackageManager {
 
     async fn list_npm(&self) -> AppResult<Vec<Package>> {
         let output = Command::new("sh")
-            .args(["-c", "npm list -g --json --depth=0 2>/dev/null || npm list -g --json"])
+            .args([
+                "-c",
+                "npm list -g --json --depth=0 2>/dev/null || npm list -g --json",
+            ])
             .output()?;
 
         if !output.status.success() {
@@ -293,7 +361,10 @@ impl PackageManager {
 
     async fn list_apt(&self) -> AppResult<Vec<Package>> {
         let output = Command::new("sh")
-            .args(["-c", "dpkg-query -W -f='${package} ${version} ${status}\\n' 2>/dev/null"])
+            .args([
+                "-c",
+                "dpkg-query -W -f='${package} ${version} ${status}\\n' 2>/dev/null",
+            ])
             .output()?;
 
         if !output.status.success() {
@@ -389,7 +460,10 @@ impl PackageManager {
 
     async fn list_rpm(&self) -> AppResult<Vec<Package>> {
         let output = Command::new("sh")
-            .args(["-c", "rpm -qa --queryformat '%{NAME}\\n%{VERSION}\\n' 2>/dev/null"])
+            .args([
+                "-c",
+                "rpm -qa --queryformat '%{NAME}\\n%{VERSION}\\n' 2>/dev/null",
+            ])
             .output()?;
 
         if !output.status.success() {
@@ -421,7 +495,10 @@ impl PackageManager {
 
     async fn list_flatpak(&self) -> AppResult<Vec<Package>> {
         let output = Command::new("sh")
-            .args(["-c", "flatpak list --app --columns=application,version 2>/dev/null"])
+            .args([
+                "-c",
+                "flatpak list --app --columns=application,version 2>/dev/null",
+            ])
             .output()?;
 
         if !output.status.success() {

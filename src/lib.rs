@@ -163,15 +163,17 @@ impl App {
 
     pub async fn load_packages(&mut self) {
         let pm = self.package_managers[self.active_pm_index].clone();
-        
+
         let pkgs = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap();
             rt.block_on(pm.list_packages())
-        }).await.unwrap_or(Ok(Vec::new()));
-        
+        })
+        .await
+        .unwrap_or(Ok(Vec::new()));
+
         if let Ok(pkgs) = pkgs {
             self.packages = pkgs;
         }
@@ -275,8 +277,7 @@ impl App {
     pub fn down(&mut self, amt: usize) {
         let count = self.filtered_packages().len();
         if count > 0 {
-            self.selected_package_index =
-                (self.selected_package_index + amt).min(count - 1);
+            self.selected_package_index = (self.selected_package_index + amt).min(count - 1);
         }
     }
 }
@@ -312,6 +313,7 @@ fn detect_package_managers() -> Vec<PackageManager> {
     let pm_configs = vec![
         ("pip", "pip3", "pip", false),
         ("npm", "npm", "npm", false),
+        ("pnpm", "pnpm", "pnpm", false),
         ("cargo", "cargo", "cargo", false),
         ("brew", "brew", "brew", false),
         ("apt", "apt", "dpkg", true),
@@ -423,7 +425,11 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             .style(Style::default().fg(COLORS.fg))
             .select(0)
     } else {
-        let names: Vec<_> = app.package_managers.iter().map(|pm| pm.name.as_str()).collect();
+        let names: Vec<_> = app
+            .package_managers
+            .iter()
+            .map(|pm| pm.name.as_str())
+            .collect();
         Tabs::new(names)
             .style(Style::default().fg(COLORS.fg))
             .select(app.active_pm_index)
@@ -477,7 +483,10 @@ fn render_body(f: &mut Frame, app: &App, area: Rect) {
     let visible_rows = (area.height as usize).saturating_sub(2);
     let max_scroll = filtered.len().saturating_sub(visible_rows);
     let half_visible = visible_rows / 2;
-    let scroll_offset = app.selected_package_index.saturating_sub(half_visible).min(max_scroll);
+    let scroll_offset = app
+        .selected_package_index
+        .saturating_sub(half_visible)
+        .min(max_scroll);
 
     let rows: Vec<_> = filtered
         .iter()
@@ -520,10 +529,7 @@ fn render_body(f: &mut Frame, app: &App, area: Rect) {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(COLORS.border)),
     )
-    .header(
-        Row::new(vec!["Name", "Version", "Status"])
-            .style(Style::default().fg(COLORS.primary))
-    )
+    .header(Row::new(vec!["Name", "Version", "Status"]).style(Style::default().fg(COLORS.primary)))
     .column_spacing(1);
 
     f.render_widget(table, area);
@@ -532,10 +538,7 @@ fn render_body(f: &mut Frame, app: &App, area: Rect) {
 fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(30),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(area);
 
     let search_indicator = if app.search_mode {
@@ -544,10 +547,18 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         " ↑↓ Navigate  / Search  u Upgrade  r Remove  i Install  q Quit ".to_string()
     };
     let action_hints = Paragraph::new(search_indicator)
-        .style(Style::default().fg(if app.search_mode { COLORS.warning } else { COLORS.fg }))
+        .style(Style::default().fg(if app.search_mode {
+            COLORS.warning
+        } else {
+            COLORS.fg
+        }))
         .alignment(Alignment::Center);
 
-    let status = if let Some((_, pkg)) = app.filtered_packages().iter().nth(app.selected_package_index) {
+    let status = if let Some((_, pkg)) = app
+        .filtered_packages()
+        .iter()
+        .nth(app.selected_package_index)
+    {
         format!(" {} {} ({}) ", pkg.name, pkg.version, pkg.status)
     } else {
         " No package selected ".to_string()
@@ -613,7 +624,10 @@ pub fn run() {
         let _ = terminal.draw(|f| render_app(f, &app));
 
         if crossterm::event::poll(std::time::Duration::from_millis(100)).unwrap_or(false) {
-            if let Ok(Event::Key(KeyEvent { code, modifiers, .. })) = crossterm::event::read() {
+            if let Ok(Event::Key(KeyEvent {
+                code, modifiers, ..
+            })) = crossterm::event::read()
+            {
                 match code {
                     KeyCode::Esc => {
                         if app.search_mode {
@@ -641,7 +655,8 @@ pub fn run() {
                         }
                     }
                     KeyCode::Char('u') => {
-                        let pkg_name = app.filtered_packages()
+                        let pkg_name = app
+                            .filtered_packages()
                             .get(app.selected_package_index)
                             .map(|(_, p)| p.name.clone());
                         if let Some(name) = pkg_name {
@@ -660,7 +675,8 @@ pub fn run() {
                         }
                     }
                     KeyCode::Char('r') => {
-                        let pkg_name = app.filtered_packages()
+                        let pkg_name = app
+                            .filtered_packages()
                             .get(app.selected_package_index)
                             .map(|(_, p)| p.name.clone());
                         if let Some(name) = pkg_name {
@@ -713,7 +729,9 @@ pub fn run() {
                         app.search_query.pop();
                     }
                     KeyCode::Char(c) => {
-                        if app.search_mode && (c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '*') {
+                        if app.search_mode
+                            && (c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '*')
+                        {
                             app.search_query.push(c);
                         }
                     }
