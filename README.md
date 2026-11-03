@@ -12,7 +12,7 @@ PackMan lets you browse, search, install, remove, and upgrade packages across **
 
 ## ✨ Features
 
-- **Auto-detects** all package managers installed on your system
+- **Auto-detects** all of the package managers installed on your system
 - **Unified package list** — switch between managers with Tab or number keys
 - **Live search** — filter packages as you type
 - **Install / Remove / Upgrade** packages without leaving the TUI
